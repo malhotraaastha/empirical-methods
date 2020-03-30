@@ -1,0 +1,217 @@
+---
+title: "PS2_q2_Aastha"
+author: "Aastha"
+date: "2/18/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+``` {r, echo=FALSE, message=FALSE, warning=FALSE}
+
+library(tidyverse)
+library(readr)
+library(ks)
+library(kdensity)
+library(data.table)
+library(fitdistrplus)
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+library(dvmisc)
+library(polywog)
+library(splines)
+library(freeknotsplines)
+library(ggcorrplot)
+library(glmnet)
+library(Metrics)
+library(reshape)
+
+setwd("~/github/empirical-methods/ProblemSets/pset2")
+
+
+```
+
+
+## loading and splitting the data
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+dt <- read_csv("boston_cl.csv")
+
+
+train_index <- sample(1:nrow(dt), 0.8 *nrow(dt))
+test_index <- setdiff(1:nrow(dt), train_index)
+
+train <- dt[train_index, ]
+test <- dt[test_index, ]
+
+
+```
+
+
+2.1 Reporting correlations of these variables
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+
+corr <- round(cor(train), 1)
+#head(corr)
+corr
+
+
+# correlation p-values
+
+#p.mat <- cor_pmat(train)
+#p.mat
+
+ggcorrplot(corr, method = "circle", hc.order = TRUE, type = "lower", outline.col = "white")
+
+```
+
+Yes, there seems to be some variables that are highly correlated with each other. As can be seen in the plot above, only a few variables have zero correlations, while several of them have bright red and blue color on the graph above pointing to high positive or negative correlations. This points out to the fact that we need to be careful in using highly correlated variables in the regression analysis that follows.
+
+
+
+##2.2 Estimating the original HR model using the training data  projecting median house price onto all of the other variables.
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+
+#Regression - Similar to TABLE VII in HR (1978)
+model_HR <- lm(log(medv) ~ rm^2 + age + dis + rad + tax + ptratio + black + lstat + crim + zn + indus + chas + nox^2, 
+          data = train)
+print(summary(model_HR),digits=5)
+
+```
+After projecting median house price onto all of the other variables we see that, most of the variables that are included in the regression have a significant effect on median house values except 'indus: proportion of non-retail business acres per town.
+
+
+
+## 2.3a Estimating the model using LASSO with largest penalty 
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+
+x           <- as.matrix(dt[, c(2:5, 8:(ncol(dt)-1), 6, 7)])
+y           <- as.matrix(dt[, "medv"])
+dt_train    <- dt[train_index, 2:ncol(dt)]
+x_train     <- x[train_index, ]
+y_train     <- y[train_index, ]
+dt_test     <- dt[test_index,  2:ncol(dt)]
+x_test      <- x[test_index, ]
+y_test      <- y[test_index, ]
+
+
+## preparing data to perform LASSO and RIDGE regressions using the function 'glmnet' which automatically picks the optimal penalty 'lmabda'
+
+
+x_train2     <- cbind(x_train[, 1:(ncol(x_train)-2)] , x_train[, (ncol(x_train)-1):ncol(x_train)]^2)
+x_test2      <- cbind(x_test[, 1:(ncol(x_test)-2)] , x_test[, (ncol(x_test)-1):ncol(x_test)]^2)
+colnames(x_train2)[(ncol(x_train2)-1):ncol(x_train2)] <- c("nox2", "rm2")
+colnames(x_test2)[(ncol(x_train2)-1):ncol(x_train2)]  <- c("nox2", "rm2")
+
+#glmnet automatically picks the optimal penalty lambda 
+opt_lambdaL  <- cv.glmnet(x_train2, log(y_train), alpha = 1, nfolds = 10, type.measure = c("mse"))$lambda.1se #alpha = 1 is LASSO and alpha = 0 is for RIDGE
+opt_lambdaL
+
+model_lasso  <- glmnet(x_train2, log(y_train), alpha = 1, lambda = opt_lambdaL)
+pred_lasso   <- coef(model_lasso, s = opt_lambdaL)
+print(pred_lasso)
+
+```
+
+Note that, the LASSO is not very good at handling variables which show correlation between them and thus can sometimes show very wild behaviors. Notice that 4 variables have been dropped in this regression.
+
+Optimal penalty is 0.024 for lasso regression
+
+## 2.3b Ridge Regression with largest penalty
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+opt_lambda_R  <- cv.glmnet(x_train2, log(y_train), alpha = 0, nfolds = 10, type.measure = c("mse"))$lambda.1se #alpha = 1 is LASSO and alpha = 0 is for RIDGE
+opt_lambda_R
+
+model_ridge <- glmnet(x_train2, log(y_train), alpha = 0, lambda = opt_lambda_R)
+pred_ridge  <- coef(model_ridge, s = opt_lambda_R)
+print(pred_ridge)
+
+
+```
+
+This model does not drop variables which are highly correlated like in the case of LASSO regression. optimal penalty is 0.17 in this case. The results from ridge regression are as above.
+
+
+## 2.4 Expanding the data to contain square term of all variables and estimating using LASSO
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+#expanding the data set using squared terms of all the variables
+
+train_newX     <- cbind(x_train2, x_train2[, 1:11]^2)
+colnames(train_newX)[(ncol(train_newX)-10):ncol(train_newX)] <-   
+ c("crim2","zn2","indus2","chas2","age2","dis2","rad2","tax2","ptratio2","black2", "lstat2")
+test_newX      <- cbind(x_test2, x_test2[, 1:11]^2)
+colnames(test_newX)[(ncol(test_newX)-10):ncol(test_newX)] <-   
+ c("crim2","zn2","indus2","chas2","age2","dis2","rad2","tax2","ptratio2","black2", "lstat2")
+
+#k-fold CV (k=10) - Automatically selects the optimal lambda penalty
+opt_lambda_L2  <- cv.glmnet(train_newX, log(y_train), alpha = 1, nfolds = 10, type.measure = c("mse"))$lambda.1se #alpha = 1 is LASSO and 0 is for ridge
+
+model_lasso2      <- glmnet(train_newX, log(y_train), alpha = 1, lambda =opt_lambda_L2)
+pred_lasso2 <- coef(model_lasso2, s = opt_lambda_L2)
+print(pred_lasso2)
+
+
+```
+
+This time LASSO drops 3 variables (from the original dataset) and drops 6 squared variables in the expanded dataset. Also, note that nox^2 and rm^2 still survive this model with expanded dataset.
+
+
+## 2.5 Comparing internal MSE versus test data MSE
+
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+# internal MSE
+
+pred_trainmodelHR    <- predict(model_HR, train)
+MSE_modelHR      <- mse(log(train$medv),pred_trainmodelHR) # mse(actual, predicted)
+
+pred_trainlasso   <- predict(model_lasso, x_train2, lambda=opt_lambda_L)
+MSE_trainlasso     <- mse(log(y_train),pred_trainlasso ) # mse(actual, predicted)
+
+pred_trainlasso2    <- predict(model_lasso2, train_newX, lambda=opt_lambda_L2)
+MSE_trainlasso2     <- mse(log(y_train),pred_trainlasso2 ) # mse(actual, predicted)
+
+pred_trainridge    <- predict(model_ridge, x_train2, lambda=opt_lambda_R)
+MSE_trainridge      <- mse(log(y_train),pred_trainridge  ) # mse(actual, predicted)
+
+
+### out-of-sample MSE
+
+pred_testmodelHR     <- predict(model_HR, test)
+MSE_testmodelHR      <- mse( log(test$medv), pred_testmodelHR)
+
+pred_testlasso     <- predict(model_lasso, x_test2, lambda=opt_lambda_L)
+MSE_testlasso      <- mse( log(y_test), pred_testlasso)
+
+pred_testlasso2    <- predict(model_lasso2, test_newX, lambda=opt_lambda_L2)
+MSE_testlasso2     <- mse( log(y_test), pred_testlasso2 )
+
+pred_testridge    <- predict(model_ridge,x_test2, lambda=opt_lambda_R)
+MSE_testridge     <- mse( log(y_test), pred_testridge)
+
+
+internal_MSE <- c(MSE_modelHR, MSE_trainlasso, MSE_trainlasso2, MSE_testridge, colnames = "HR", "LASSO", "LASSO2", "Ridge")
+external_MSE <- c(MSE_testmodelHR, MSE_testlasso, MSE_testlasso2, MSE_trainridge, olnames = "HR", "LASSO", "LASSO2", "Ridge")
+
+
+
+```
+I obtain that the LASSO in the extended model performs the best in out of sample prediciton, while the original LASSO model performs the worst in and out of sample in this situation. The original HR model performs good in-sample but not out of sample.RIdge regression does not perform the best either in-sample or out of sample.

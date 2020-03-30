@@ -1,0 +1,302 @@
+---
+title: "PS 2"
+author: "Aastha"
+date: "2/13/2020"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,  echo=FALSE, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(readr)
+library(ks)
+library(kdensity)
+library(data.table)
+library(fitdistrplus)
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+library(dvmisc)
+library(polywog)
+library(splines)
+library(freeknotsplines)
+
+setwd("~/github/empirical-methods/ProblemSets/pset2")
+
+
+```
+
+
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE}
+dt <- read_csv("nodelmp.csv")
+lmp <- dt$lmp
+temp <- dt$temp
+day <- dt$day
+```
+
+
+
+## 1.1 Relationship between Maximum price per day and the temperature 
+
+```{r , echo=FALSE, message=FALSE, warning=FALSE}
+
+
+aux          <- dt %>% group_by(day, month, year) %>% summarise(maxP = max(lmp))
+dt2          <- semi_join(dt,aux, by = c("lmp"="maxP", "day"="day", "month"="month"))
+remove(aux)
+
+plot(dt2$temp, dt2$lmp, xlab = "temperature", ylab = "maximum price", main = "Relationship between maximum price per day and temperature", col = 'blue')
+
+```
+No, this relationship does not look linear. We might need to check for nonlinear relationships.
+
+##1.2  Predicting the relationship using a polynomical regression
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+for (i in (1:10)) {
+  model <- lm(dt$lmp ~ poly(dt$temp, i))
+  #get_mse(model[i])
+}
+
+print( model)
+
+confint(model, level =  0.95) # finding confidence interval of the model at 95% level
+
+plot(fitted(model), residuals(model)) # plotting residuals versus fitted values
+
+get_mse(model)
+
+
+mse <- vector(mode = "numeric", length(10))
+#model <- matrix(0, nrow = 10, ncol = )
+for (i in (1:10)) {
+  mse[i] <- get_mse(lm(dt$lmp ~ poly(dt$temp, i)))
+  }
+polyDegree <- min(mse)
+polyDegree # i obtain optimum polynomial degree to be 7
+
+optModel <- lm(dt$lmp ~ poly(dt$temp, 9))
+plot(fitted(optModel), residuals(optModel)) # there should be no clear pattern
+
+plot(temp, lmp)
+lines(temp, optModel$fitted.values, col = 'red') # fitting 
+
+```
+
+The best fit is polynomial of degree = 09. However, the value for MSE is similar for polynomial of degree = 07 as well.
+
+
+##1.3 Using K-Fold Cross Validation to check for optimal degree of Polynomial
+
+
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+
+k <- 10
+fold <- sample(k, nrow(dt), replace = TRUE)
+
+## For each span from 1 to 10 we can calculate the CV test error:
+mse <- numeric(k)
+span <- seq(1, 10, by = 1)
+cv <- numeric(length(span))
+
+
+#mse  <- vector("numeric", p)
+#cv   <- vector("numeric", p)
+
+for (j in 1:k)
+{
+  for (i in 1:k)
+  {
+    take <- fold == i
+    foldi <- dt[take, ]
+    foldOther <- dt[!take, ]
+    f <- lm(lmp ~ poly(temp,degree=j), data=foldOther)
+    pred <- predict(f, foldi)
+    mse[i] <- mean((pred - foldi$lmp)^2, na.rm = TRUE)
+  }
+  cv[j]<- mean(mse)
+}
+
+plot(span, cv, xlab = 'polynomial degree', ylab = 'MSE', main = '10-fold Cross Validated Optimal Degree of Polynomial')
+
+optP_CV <- which.min(cv)
+optP_CV # 9 is the optimal number of degree of polynomial
+
+```
+ I obtain the optimal degree of polynomial to be 7, and predict the values of the variable lmp using the same.
+ 
+ 
+##1.4 Plotting different degrees of polynomial regression along with the optimal degree 
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+fit1 <- lm(dt$lmp ~ poly(dt$temp,1))
+pred1 <- predict(fit1)
+fit2 <- lm(dt$lmp ~ poly(dt$temp,2))
+pred2 <- predict(fit2)
+fit_optPCV <- lm(dt$lmp ~ poly(dt$temp,optP_CV))
+pred_optPCV <- predict(fit_optPCV)
+fit10 <- lm(dt$lmp ~ poly(dt$temp,10))
+pred10 <- predict(fit10)
+
+plot(dt$temp, dt$lmp, col = 'grey', ylim=c(0,200), xlab = 'temperature', ylab = 'Price', main = 'Fitting different degrees of polynomials')
+lines(dt$temp, pred1, col = 'red', lwd = 1)
+lines(dt$temp, pred2, col = 'yellow', lwd = 2)
+lines(dt$temp, pred_optPCV, col = 'green', lwd = 3)
+lines(dt$temp, pred10, col = 'blue', lwd = 1.5)
+legend("topright",c("p=1", "p=2","p=opt degree", "p=10"),col=c("red", "yellow", "green", "blue"),lwd=2)
+
+
+```
+It is clear that the optimal polynomial degree regression(blue) fits the data musch better than the other degree of polynomial regressions.
+
+##1.5 Prediction of lmp using cubic splines
+
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+#  # Build the model
+knots <- quantile(dt$temp, p = c(0.25, 0.5, 0.75))
+modelSp <- lm (lmp ~ bs(temp, knots = knots), data = dt)
+
+predict_spline <- predict(modelSp)
+
+ggplot(dt, aes(temp, lmp) ) +
+  geom_point() +
+  stat_smooth(method = lm, formula = y ~ splines::bs(x, df = 3))
+
+
+## using cross validation to find optimal number of knots
+
+
+#xy.freekt <- fit.search.numknots(dt$temp, dt$lmp, degree = 3, minknot = 1, maxknot = 10, alg = "PS", knotnumcrit = "GCV" )
+#plot.freekt(xy.freekt, xfit = 0:1000/1000)
+
+modelSpCv<-smooth.spline(dt$temp,dt$lmp,cv = TRUE)
+modelSpCv
+
+plot(dt$temp,dt$lmp,col="grey")
+#Plotting Regression Line
+lines(modelSpCv,lwd=2,col="purple")
+legend("topright",("Smoothing Splines with 48.9 df selected by CV"),col="purple",lwd=2)
+            
+            
+```
+
+## manual cross validation to find the optimal number of knots in cubic splines:
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+k <- 10
+fold2     <- sample(k, nrow(dt), replace = TRUE)
+
+## calculating the CV test error: 
+mse2      <- vector("numeric", k)
+cv2       <- vector("numeric", k)
+df_aux    <- c(1:k)+3
+
+for (j in 1:k)
+{
+  for (i in 1:k)
+  {
+    take      <- fold2 == i
+    foldi     <- dt[take, ]
+    foldOther <- dt[!take, ]
+    f         <- lm(lmp ~ bs(temp, df = df_aux[j]), data=foldOther, knots = knots)
+    pred      <- predict(f, foldi)
+    mse2[i]   <- mean((pred - foldi$lmp)^2, na.rm = TRUE)
+  }
+  cv2[j]      <- mean(mse2)
+ 
+}
+
+
+#Plotting 10-fold CV
+hat_KnotCV    <- data.frame(x=df_aux,y=cv2)
+cubic_10fold  <- ( ggplot(hat_KnotCV, aes(x=x,y=y)) + geom_point(alpha = .6, size=3, col="skyblue3") +
+   labs(x="Degree", y="MSE", title = "10-fold CV (for choosing the optimal number of knots for cubic spline)") )
+print(cubic_10fold)
+
+#Fitted values & residuals for cubic spline
+optKnot_CV <- df_aux[which.min(cv2)]-3
+model_optSp <- lm(lmp ~ bs(temp, knots = optKnot_CV), data=dt) # optimal knots is 6
+pred_optSpCV <- predict(model_optSp)
+
+
+plot(dt$temp,dt$lmp,col="grey")
+#Plotting Regression Line
+lines(dt$temp, pred_optSpCV,lwd=2,col="blue")
+legend("topright",("Splines with 6 knots selected by CV"),col="blue",lwd=2)
+
+
+
+```
+
+I find that the optimal degree of knots is 6 for the natural splines to fit the data well.
+
+
+## 1.6 Prediction using Loess regression
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+model_loess <- loess(dt$lmp ~ dt$temp)
+pred_loess <- predict(model_loess)
+
+                    
+
+plot(dt$temp,dt$lmp,col="grey", xlab = 'temperature', ylab = 'Price', ylim = c(0,200))
+#Plotting Regression Line
+lines(dt$temp, pred_loess,lwd=0.3,col="pink")
+
+legend("topright",("Prediction using Lowess Regression"),col="pink",lwd=2)
+
+
+```
+
+ ## Fitting Optimal-Polynomial, 'Optimal-Spline and Lowess Predictions
+``` {r , echo=FALSE, message=FALSE, warning=FALSE }
+
+plot(dt$temp,dt$lmp,col="grey", xlab = 'Temperature', ylab = 'Price', ylim = c(0,200))
+#Plotting Regression Line
+lines(dt$temp, model_loess$fitted,lwd= 3,col="red")
+lines(dt$temp, model_optSp$fitted.values, lwd = 3, col ='blue')
+lines(dt$temp, pred_optPCV, col = 'yellow', lwd = 0.25)
+legend("topright",c("Lowess Regression", "Splines with Opt Knots","Polynomial with Opt Degrees"),col=c("red", "blue", "yellow"),lwd=2)
+
+
+
+
+```
+
+
+Polynomial regression with optimal degree (09) seems to perform the best among all the regressions here.
+
+
+## 1.7 Plotting residuals of each of the curves against temperature
+
+``` {r , echo=FALSE, message=FALSE, warning=FALSE}
+
+library(lattice)
+library(devtools)
+
+
+
+
+plot(dt$temp,model_loess$residuals,col="red", xlab = 'Temperature', ylab = 'Residuals', ylim = c(-200,200))
+#Plotting Regression Line
+points(dt$temp, model_optSp$residuals,lwd= 3,col="green")
+points(dt$temp, fit_optPCV$residuals, lwd = 3, col ='yellow')
+legend("topright",c("Lowess Residuals", "Natural Spline Residuals","Polynomial Residuals"),col=c("red", "green", "yellow"),lwd=2)
+
+
+```
+
+
+All three seem to perform similar in the interior region. Note that, lowess seems to perform bad at the boundaries, however, note that natural cubic splines perform better on the boundary since they put additional constraints and therefore reduce variance around the boundary.

@@ -1,0 +1,101 @@
+---
+title: "PS3_q2"
+author: "Aastha"
+date: "3/24/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+library(tidyverse)
+library(readr)
+library(ks)
+library(kdensity)
+library(data.table)
+library(fitdistrplus)
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+library(dvmisc)
+library(polywog)
+library(splines)
+library(freeknotsplines)
+library(foreign)
+library(MatchIt)
+library(dplyr)
+library(cem)
+setwd("~/github/empirical-methods/ProblemSets/pset3")
+```
+
+``` {r, message = FALSE, warning = FALSE}
+data <- load("yelp.Rdata")
+
+#rev <- data$logrev
+
+```
+
+
+
+In the following steps, I am loading the data 10 times and using a different discontinuity each time starting with 0.25, 0.75, 1.25 and so on.. For example, there is a discontinuity at 0.25, if the score is 0.24 for example then the stars given are rounded to 0, whereas if the score is 0.26 then it is rounded-off to 0.5 stars. I estimate the effect of these 10 different discontinuities on the dependendent variable : log of revenue. The effect of different discontinuities are given below.
+``` {r, message = FALSE, warning = FALSE}
+data_1 <- yelp %>% subset(score<0.75) %>% mutate(treat = ifelse(stars == 0.5 , 1, 0))
+data_2 <- yelp %>% subset(score>=0.25 & score<1.25) %>% mutate(treat = ifelse(stars == 1 , 1, 0))
+data_3 <- yelp %>% subset(score>=0.75 & score<1.75) %>% mutate(treat = ifelse(stars == 1.5 , 1, 0))
+data_4  <- yelp %>% subset(score>=1.25 & score<2.25) %>% mutate(treat = ifelse(stars == 2 , 1, 0))
+data_5  <- yelp %>% subset(score>=1.75 & score<2.75) %>% mutate(treat = ifelse(stars == 2.5 , 1, 0))
+data_6  <- yelp %>% subset(score>=2.25 & score<3.25) %>% mutate(treat = ifelse(stars == 3 , 1, 0))
+data_7  <- yelp %>% subset(score>=2.75 & score<3.75) %>% mutate(treat = ifelse(stars == 3.5 , 1, 0))
+data_8  <- yelp %>% subset(score>=3.25 & score<4.25) %>% mutate(treat = ifelse(stars == 4 , 1, 0))
+data_9  <- yelp %>% subset(score>=3.75 & score<4.75) %>% mutate(treat = ifelse(stars == 4.5 , 1, 0))
+data_10 <- yelp %>% subset(score>=4.25) %>% mutate(treat = ifelse(stars == 5 , 1, 0))
+
+rd_eff <- data.frame(matrix(NA, nrow = 10, ncol = 1))
+
+for (i in 1:10){
+   reg <- lm(logrev ~ treat + score, data = get(paste0("data_" , i)))
+  rd_eff[i,1] <- summary(reg)$coefficients[2,1]
+}
+
+
+```
+
+ Reporting the average treatment effect for 10 different treatments below
+
+``` {r, message = FALSE, warning = FALSE}
+colnames(rd_eff) <- 'treatment effect for 10 discontinuities'
+print(rd_eff)
+```
+now finding the average treatment effect across the 10 discontinuities
+
+
+``` {r, message = FALSE, warning = FALSE}
+avg_eff <- mean(rd_eff$`treatment effect for 10 discontinuities`)
+avg_eff
+```
+
+Average treatment effect across 10 discontinuitie is positive and significant, of the magnitude 1.375
+``` {r, message = FALSE, warning = FALSE}
+
+```
+
+
+
+``` {r, message = FALSE, warning = FALSE}
+
+```
+
+
+
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+```
+
+
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+```

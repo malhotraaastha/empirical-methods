@@ -5,7 +5,7 @@
 ### Problem 1: Electricity Prices
 
 Deregulated electricity markets solve a series of interellated, high-frequency auctions to ensure that supply equals demand at all points in time and space. The dataset `nodelmp.csv` contains one year worth "locational marginal prices" (lmp's) for a node in Brighton. [If you're interested, more info [here](https://www.iso-ne.com/participate/support/faq/lmp)].
-
+price
 In this problem you will explore the relationship between these prices and temperature (var: `temp`).
 
 1) Make a bin scatter plot of the relationship between the maximum price each day and the temperature. Does the relationship look linear?
@@ -39,7 +39,7 @@ A slightly modified version of the HR data (which has been used extensively due 
 - INDUS    proportion of non-retail business acres per town
 - CHAS     Charles River dummy variable (= 1 if tract bounds river; 0 otherwise)
 - NOX      nitric oxides concentration (parts per 10 million)
-- RM       average number of rooms per dwelling
+- RM       average number of rooms per dwellingS
 - AGE      proportion of owner-occupied units built prior to 1940
 - DIS      weighted distances to five Boston employment centres
 - RAD      index of accessibility to radial highways
@@ -53,12 +53,12 @@ Set aside 20 percent of the data as a test sample. For each of the models specif
 
 1) Report the correlation of these variables. Are there any pairs that concern you?
 
-2) Estimate the original HR model using the training data. Project the the log(Median House Price) onto all of the other variables. Everything should enter linearly, except for `NOx` and `RM`, which should only enter quadratically.
+2) Estimate the original HR model using the training data. Project the the log(Median House Price) onto all of the other variables. Everything should enter linearly, except for `NOx` and `RM`, which should only enter quadratic(ally.
 
 3) Now estimate the model using LASSO. Use k=10 fold cross validation to select lambda. Then, select the model with the largest lambda (penalty) such that the MSE is within one standard error of the minimum MSE.
 
 3) Do the same thing for ridge regression. Then, select the model with the largest lambda (penalty) such that the MSE is within one standard error of the minimum MSE.
 
-4) HR's decision to have only `NOx` and `RM` enter quadractically seems sort of arbitrary. Expand the data to contain the square term of all variables. Then run Lasso on this expanded data set. Which coefficients survive now?
+4) HR's decision to have only `NOx` and `RM` enter quadratically seems sort of arbitrary. Expand the data to contain the square term of all variables. Then run Lasso on this expanded data set. Which coefficients survive now?
 
 5) Report the internal MSE and test data MSE for HR's original model; Lasso and Ridge on the original covariates; and Lasso on the full set of second order terms. Which one fits best?

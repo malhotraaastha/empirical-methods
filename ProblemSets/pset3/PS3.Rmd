@@ -1,0 +1,318 @@
+---
+title: "PS 3"
+author: "Aastha"
+date: "3/21/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r,  echo=FALSE, message=FALSE, warning=FALSE} 
+library(tidyverse)
+library(readr)
+library(ks)
+library(kdensity)
+library(data.table)
+library(fitdistrplus)
+library(ggplot2)
+library(gridExtra)
+library(ggpubr)
+library(dvmisc)
+library(polywog)
+library(splines)
+library(freeknotsplines)
+library(foreign)
+library(MatchIt)
+library(dplyr)
+library(cem)
+setwd("~/github/empirical-methods/ProblemSets/pset3")
+```
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+data_dw <- read.dta("nsw_dw.dta")
+
+```
+
+
+# Ques 1
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+age <- data_dw$age
+treat <- data_dw$treat
+black <- data_dw$black
+hispanic <- data_dw$hispanic
+education <- data_dw$education
+married <- data_dw$married
+nodegree <- data_dw$nodegree
+re74 <- data_dw$re74
+re78 <- data_dw$re78
+re75 <- data_dw$re75
+
+mean(age[treat == 1])
+mean(age[treat == 0])
+
+
+tapply(age, treat, mean)
+tapply(black, treat, mean)
+tapply(married, treat, mean)
+tapply(hispanic, treat, mean)
+tapply(education, treat, mean)
+tapply(nodegree, treat, mean)
+tapply(re74, treat, mean)
+tapply(re78, treat, mean)
+tapply(re75, treat, mean)
+
+covars <- cbind(age, black, hispanic, married, education, nodegree, re74, re75, re78)
+
+
+lapply(data_dw[,c("married", "age", "black", "nodegree", "hispanic", "education", "re74", "re75", "re78")], function(x) t.test(x ~ data_dw$treat, var.equal = TRUE))
+
+```
+
+Yes, they are blanaced, the numbers reported for control (treat = 0) and treatment (treat =1) are the same as table 1 in the paper.
+
+
+# Ques 2
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+treatEff_b <- mean(re78[treat == 1]) - mean(re78[treat == 0])
+treatEff_b
+
+reg1 <- lm (re78 ~ age + education + black + hispanic + married + nodegree + treat 
+            + re74 + re75)
+reg1
+
+
+```
+Treatment effect without controls is just the difference between expected value of the outcome variable (re78) for treatment and control. 
+
+To calculate the treatment effect with controls is a linear regression of outcome variable on the treatment dummy and a list of covariates from the data. 
+
+
+# Ques 3
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+# dropping NSW control group
+
+Ndata_dw <- data_dw[which(treat == '1'),]
+psid_cont <- read.dta("psid_controls.dta")
+
+dim(Ndata_dw)
+dim(psid_cont)
+
+# appending the data with PSID controls
+data_dw_psid <- rbind(Ndata_dw, psid_cont)
+dim(data_dw_psid)
+
+
+age <- data_dw_psid$age
+treat <- data_dw_psid$treat
+black <- data_dw_psid$black
+hispanic <- data_dw_psid$hispanic
+education <- data_dw_psid$education
+married <- data_dw_psid$married
+nodegree <- data_dw_psid$nodegree
+re74 <- data_dw_psid$re74
+re78 <- data_dw_psid$re78
+re75 <- data_dw_psid$re75
+
+# Testing for balance between treatment and control
+
+tapply(age, treat, mean)
+tapply(black, treat, mean)
+tapply(married, treat, mean)
+tapply(hispanic, treat, mean)
+tapply(education, treat, mean)
+tapply(nodegree, treat, mean)
+tapply(re74, treat, mean)
+tapply(re78, treat, mean)
+tapply(re75, treat, mean)
+
+
+# performing tests for difference in means 
+
+
+
+lapply(data_dw_psid[,c("married", "age", "black", "nodegree", "hispanic", "education", "re74", "re75", "re78")], function(x) t.test(x ~ data_dw_psid$treat, var.equal = TRUE))
+
+```
+Not balanced sample means 
+
+
+# Ques 4
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+treatEff_b_psid <- mean(re78[treat == 1]) - mean(re78[treat == 0])
+treatEff_b_psid
+
+reg_psid <- lm (re78 ~ age + education + black + hispanic + married + nodegree + treat + re74 + re75)
+reg_psid
+
+```
+
+
+# Q1 alt
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+#ecls_cov <- c('race_white', 'p5hmage', 'w3income', 'p5numpla', 'w3momed_hsb')
+#ecls %>%
+#  group_by(catholic) %>%
+#  select(one_of(ecls_cov)) %>%
+#  summarise_all(funs(mean(., na.rm = T)))
+
+covars_psid <- c('age', 'married', 'education', 'black', 'hispanic', 'nodegree', 're74', 're75')
+
+#covars_psid <- cbind(age, black, hispanic, married, education, nodegree, re74, re75, re78)
+
+data_dw_psid %>%
+  group_by(treat) %>%
+  dplyr::select(one_of(covars_psid)) %>%
+  summarise_all(funs(mean(., na.rm = T)))
+
+# testing for difference in means
+
+
+lapply(covars_psid, function(v) {
+  t.test(data_dw_psid[, v] ~ data_dw_psid[, 'treat'])
+}) # maybe previous method was nice
+
+
+
+```
+
+# q4?
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+
+# estimate the propensity score by running a logit model
+
+
+m_ps <- glm(treat ~ age + education + nodegree + black + hispanic + re74 + re75 + married , family = binomial(), data = data_dw_psid)
+summary(m_ps)
+
+
+# Using this model, we can now calculate the propensity score for each student. It is simply the student’s predicted probability of being Treated, given the estimates from the logit model. Below, I calculate this propensity score using predict() and create a dataframe that has the propensity score as well as the student’s actual treatment status.
+
+prs_df <- data.frame(pr_score = predict(m_ps, type = "response"),
+                     treat = m_ps$model$treat)
+head(prs_df)
+
+```
+
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+
+labs <- paste("Treatment Status:", c("Treated", "Control"))
+prs_df %>%
+  mutate(treat = ifelse(treat == 1, labs[1], labs[2])) %>%
+  ggplot(aes(x = pr_score)) +
+  geom_histogram(color = "white") +
+  facet_wrap(~treat) +
+  xlab("Probability of getting treated") + xlim(0,1) + ylim(0,80) +
+  theme_bw()
+
+
+
+```
+
+# using the specification used in footnote of table 3
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+m_ps3 <- glm(treat ~ age + I(age^2) + education + I(education^2) + nodegree + black + hispanic + re74 + I(re74^2) + re75 + I(re75^2) + married , family = binomial(), data = data_dw_psid)
+summary(m_ps3)
+
+
+
+
+prs_df3 <- data.frame(pr_score3 = predict(m_ps3, type = "response"),
+                     treat = m_ps3$model$treat)
+head(prs_df3)
+
+labs <- paste("Treatment Status:", c("Treated", "Control"))
+prs_df3 %>%
+  mutate(treat = ifelse(treat == 1, labs[1], labs[2])) %>%
+  ggplot(aes(x = pr_score3)) +
+  geom_histogram(color = "white") +
+  facet_wrap(~treat) +
+  xlab("Probability of getting treated") + xlim(0,1) + ylim(0,80) +
+  theme_bw()
+
+
+
+```
+
+
+# Q6
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+#The method we use below is to find pairs of observations that have very similar propensity scores, but that differ in their treatment status. We use the package MatchIt for this. This package estimates the propensity score in the background and then matches observations based on the method of choice (“nearest” in this case)
+
+data_dw_psid_nomiss <- data_dw_psid %>%  # MatchIt does not allow missing values
+  dplyr::select(re78, treat, one_of(covars_psid)) %>%
+  na.omit()
+
+
+mod_match <- matchit(treat ~ age + I(age^2) + education + I(education^2) + nodegree + black + hispanic + re74 + I(re74^2) + re75 + I(re75^2) + married,
+                     method = "nearest", data = data_dw_psid_nomiss)
+
+summary(mod_match)
+
+plot(mod_match)
+
+```
+
+
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+# To create a dataframe containing only the matched observations, use the match.data() function:
+
+dta_m <- match.data(mod_match)
+dim(dta_m)
+
+
+```
+
+# Estimating treatment effects 
+
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+with(dta_m, t.test(re78 ~ treat))
+
+# or use OLS with or without controls 
+lm_treat1 <- lm(re78 ~ treat, data = dta_m)
+summary(lm_treat1)
+
+
+lm_treat2 <- lm(re78 ~ age + I(age^2) + education + I(education^2) + nodegree + black + hispanic + re74 + I(re74^2) + re75 + I(re75^2) + married + treat, data = dta_m)
+summary(lm_treat2)
+```
+
+# https://sejdemyr.github.io/r-tutorials/statistics/tutorial8.html
+# https://cran.r-project.org/web/packages/cem/vignettes/cem.pdf
+
+#Q7
+``` {r, echo=FALSE, message = FALSE, warning = FALSE}
+library(cem)
+
+data <- data.frame(na.omit(data_dw_psid))
+
+imbalance(group=data$treat, data=data[covars_psid]) # common support is 1.4%
+
+mat <- cem(treatment = "treat", data = data, drop = "re78",keep.all=TRUE)
+mat
+
+est <- att(mat, re78 ~ treat + age + I(age^2) + education + I(education^2) + nodegree + black + hispanic + re74 + I(re74^2) + re75 + I(re75^2) + married, data = data)
+est
+
+est2 <- att(mat, re78 ~ treat + age + I(age^2) + education + I(education^2) + nodegree + black + hispanic + re74 + I(re74^2) + re75 + I(re75^2) + married, data = data, model = "forest")
+est2
+
+
+plot(est2, mat, data, vars=c("education", "age", "re74", "re75", "black", "hispanic", "nodegree", "married"))
+```
